@@ -1,0 +1,7 @@
+{
+  "engineering": ["engineering", "c_level"],
+  "finance": ["finance", "c_level"],
+  "hr": ["hr", "c_level"],
+  "marketing": ["marketing", "c_level"],
+  "employee_handbook": ["employee", "hr", "finance", "marketing", "engineering", "c_level"]
+}

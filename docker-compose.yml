@@ -1,0 +1,65 @@
+# FinSolve RAG Chatbot — Docker Compose
+#
+# IMPORTANT: Ollama must be running on the HOST machine (not in Docker).
+# Ollama requires direct GPU/CPU access that is not easily passed through
+# Docker on all platforms.  Both containers reach it via the special DNS
+# name `host.docker.internal` which resolves to the host's loopback address.
+#
+# Before starting:
+#   1. Start Ollama on your host:  ollama serve
+#   2. Pull the model:             ollama pull llama3.2
+#   3. Copy and fill secrets:      cp .env.example .env
+#   4. Ingest documents:           docker compose run --rm backend python scripts/ingest.py
+#   5. Start all services:         docker compose up --build
+
+services:
+
+  # --------------------------------------------------------------------------
+  # Backend — FastAPI + ChromaDB
+  # --------------------------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      # Source documents (read-only inside the container)
+      - ./data:/app/data:ro
+      # ChromaDB persistence — survives container restarts
+      - ./chroma_db:/app/chroma_db
+    env_file:
+      - .env
+    environment:
+      # Override OLLAMA_BASE_URL so the container reaches the host's Ollama.
+      # On Linux you may need to use the host's actual LAN IP instead.
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+      CHROMA_PERSIST_DIR: /app/chroma_db
+    extra_hosts:
+      # Ensures host.docker.internal resolves on Linux (no-op on Mac/Windows).
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # --------------------------------------------------------------------------
+  # Frontend — Next.js
+  # --------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      # Must be a URL the USER'S BROWSER can reach — not a container-internal name.
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NODE_ENV: production
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
